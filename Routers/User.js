@@ -224,6 +224,105 @@ router.post("/account/avatar", User_Auth, avatarUploads.single("avatar"), async 
     }
 })
 
+router.post("/follow", User_Auth, async (req, res, next) => {
+    try {
+        const body = req.body
+        const targetUid = body["targetUid"]
+
+        const targetUser = await User.findOne({ _id: ObjectId(targetUid) })
+
+        if (!targetUser)
+            return res.status(404).send({
+                "error": "404-targetUidNotFound"
+            })
+
+        if (!targetUser["followers"].includes(req.user["_id"]))
+            targetUser["followers"].push(req.user["_id"])
+
+        targetUser.save()
+
+        return res.status(200).send({
+            "error": null
+        })
+    } catch (e) {
+        return res.status(500).send(e)
+    }
+})
+
+router.post("/followed", User_Auth, async (req, res, next) => {
+    try {
+        const body = req.body
+        const uid = body["uid"]
+        const targetUid = body["targetUid"]
+
+        const targetUser = await User.findOne({ _id: ObjectId(targetUid) })
+
+        if (!targetUser)
+            return res.status(404).send({
+                "error": "404-targetUidNotFound"
+            })
+
+        return res.status(200).send({
+            "error": null,
+            "result": targetUser["followers"].includes(uid)
+        })
+    } catch (e) {
+        return res.status(500).send(e)
+    }
+})
+
+router.post("/unfollow", User_Auth, async (req, res, next) => {
+    try {
+        const body = req.body
+        const uid = body["uid"]
+        const targetUid = body["targetUid"]
+
+        var targetUser = await User.findOne({ _id: ObjectId(targetUid) })
+
+        if (!targetUser)
+            return res.status(404).send({
+                "error": "404-targetUidNotFound"
+            })
+
+        targetUser["followers"] = targetUser["followers"].filter(item => {
+            return item.toString() != uid.toString()
+        })
+
+        targetUser.save()
+
+        return res.status(200).send({
+            "error": null
+        })
+    } catch (e) {
+        return res.status(500).send(e)
+    }
+})
+
+router.get("/following", async (req, res, next) => {
+    try {
+        const queries = req.query
+        const uid = queries["uid"]
+
+        const user = await User.findOne({ _id: ObjectId(uid) })
+
+        if (!user)
+            return res.status(404).send({
+                "error": "404-uidNotFound"
+            })
+
+        const following = (await User.find({ followers: ObjectId(uid) }, "_id")).map(item => {
+            return item["_id"]
+        })
+
+        return res.status(200).send({
+            "error": null,
+            "result": following
+        })
+    } catch (e) {
+        return res.status(500).send(e)
+    }
+})
+
 module.exports.provideDbObject = function (_db) {
     db = _db
 }
