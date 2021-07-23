@@ -1,8 +1,10 @@
+console.clear()
+
 const Dropbox = require("./libs/dropbox")
 const Express = require("./libs/express")
 const Mongodb = require("./libs/mongodb")
 
-Dropbox.connect(err => {
+Dropbox.connect((err, db) => {
     if (err) {
         console.log("Process ended due to error")
         process.kill(process.pid)
@@ -26,11 +28,18 @@ Dropbox.connect(err => {
                 return; // Failsafe
             }
 
-            setupEndpoints(app)
+            setupEndpoints(app, db)
         })
     })
 })
 
-const setupEndpoints = function (app) {
+// Routers
+const UserRouter = require("./Routers/User")
 
+const setupEndpoints = function (app, db) {
+    // Initial setup
+    UserRouter.provideDbObject(db)
+
+    // Use routers
+    app.use(UserRouter.router)
 }
