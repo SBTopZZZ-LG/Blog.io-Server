@@ -1,0 +1,27 @@
+{
+  "name": "blog_io_server",
+  "version": "1.0.0",
+  "description": "A blog.io Server",
+  "main": "main.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "node main.js"
+  },
+  "keywords": [
+    "Blog.io",
+    "blog",
+    "blogging",
+    "blog_io"
+  ],
+  "author": "Saumitra Topinkatti",
+  "license": "ISC",
+  "dependencies": {
+    "dotenv": "^10.0.0",
+    "dropbox": "^10.4.3",
+    "express": "^4.17.1",
+    "mongoose": "^5.13.3",
+    "multer": "^1.4.2",
+    "node-fetch": "^2.6.1",
+    "uuid": "^8.3.2"
+  }
+}
