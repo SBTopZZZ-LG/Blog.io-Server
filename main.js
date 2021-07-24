@@ -37,9 +37,6 @@ Dropbox.connect((err, db) => {
 const UserRouter = require("./Routers/User")
 
 const setupEndpoints = function (app, db) {
-    // Initial setup
-    UserRouter.provideDbObject(db)
-
     // Use routers
-    app.use(UserRouter.router)
+    app.use(UserRouter.router(db))
 }

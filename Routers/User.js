@@ -17,7 +17,7 @@ var avatarUploads = multer({ dest: 'avatars/' })
 const router = new express.Router()
 
 // Regex
-const loginTokenRegex = /(?:Bearer)*[ -_]*(.+)$/
+const loginTokenRegex = /(?:Bearer)?[ -_]*(.+)$/
 const emailRegex = /^[a-zA-Z\._0-9]+@[a-zA-Z\._0-9]+(?:\.com)$/
 
 // Funcs
@@ -32,8 +32,6 @@ router.post("/login", async (req, res, next) => {
     try {
         const headers = req.headers
         const loginToken = headers["authorization"] == undefined ? null : loginTokenRegex.exec(headers["authorization"])[0]
-
-        console.log(loginToken)
 
         const body = req.body
         const email = body["email"]
@@ -239,7 +237,11 @@ router.post("/follow", User_Auth, async (req, res, next) => {
         if (!targetUser["followers"].includes(req.user["_id"]))
             targetUser["followers"].push(req.user["_id"])
 
+        if (!req.user["following"].includes(targetUid))
+            req.user["following"].push(targetUid)
+
         targetUser.save()
+        req.user.save()
 
         return res.status(200).send({
             "error": null
@@ -264,7 +266,7 @@ router.post("/followed", User_Auth, async (req, res, next) => {
 
         return res.status(200).send({
             "error": null,
-            "result": targetUser["followers"].includes(uid)
+            "result": targetUser["followers"].includes(uid) && req.user["following"].includes(targetUid)
         })
     } catch (e) {
         return res.status(500).send(e)
@@ -288,7 +290,12 @@ router.post("/unfollow", User_Auth, async (req, res, next) => {
             return item.toString() != uid.toString()
         })
 
+        req.user["following"] = req.user["following"].filter(item => {
+            return item.toString() != targetUid.toString()
+        })
+
         targetUser.save()
+        req.user.save()
 
         return res.status(200).send({
             "error": null
@@ -323,7 +330,7 @@ router.get("/following", async (req, res, next) => {
     }
 })
 
-module.exports.provideDbObject = function (_db) {
+module.exports.router = function (_db) {
     db = _db
+    return router
 }
-module.exports.router = router

@@ -30,6 +30,10 @@ const schema = new Schema({
         type: Array,
         default: []
     },
+    following: {
+        type: Array,
+        default: []
+    },
     login_token: {
         type: String
     }
