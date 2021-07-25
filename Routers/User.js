@@ -219,7 +219,7 @@ router.post("/account/avatar", User_Auth, avatarUploads.single("avatar"), async 
                     })
                 })
 
-            fs.unlinkSync("avatars/" + avatar.filename, () => { })
+            fs.unlink("avatars/" + avatar.filename, () => { })
         })
     } catch (e) {
         return res.status(500).send(e)

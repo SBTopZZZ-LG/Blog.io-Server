@@ -62,7 +62,7 @@ router.post("/blog/create", User_Auth, async (req, res, next) => {
                 const newObj = new BlogObjectRequest({
                     requester: req.user["_id"],
                     request_token: token,
-                    timestamp: Date.now()
+                    date_created: Date.now()
                 })
                 newObj.save()
                 imageObjectsTokens.push(token)
@@ -162,16 +162,11 @@ router.post("/blog/request", User_Auth, blogUploads.single("image"), async (req,
         const queries = req.query
         const request_token = queries["token"]
 
-        const blogRequest = await BlogObjectRequest.findOne({ request_token: request_token })
+        const blogRequest = await BlogObjectRequest.findOne({ request_token: request_token, requester: req.user["_id"] })
 
         if (!blogRequest)
             return res.status(404).send({
                 "error": "404-requestNotFoundOrExpired"
-            })
-
-        if (blogRequest["requester"].toString() != req.user["_id"].toString())
-            return res.status(403).send({
-                "error": "403-forbidden"
             })
 
         fs.readFile("blog_contents/" + image.filename, async (err, data) => {
@@ -189,7 +184,7 @@ router.post("/blog/request", User_Auth, blogUploads.single("image"), async (req,
                     })
                 })
 
-            fs.unlinkSync("blog_contents/" + image.filename, () => { })
+            fs.unlink("blog_contents/" + image.filename, () => { })
         })
     } catch (e) {
         return res.status(500).send(e)
@@ -214,6 +209,42 @@ router.get("/blog/request", async (req, res, next) => {
     }
 })
 
+router.post("/blog/cover/remove", User_Auth, async (req, res, next) => {
+    try {
+        const body = req.body
+        const blogUid = body["blogUid"]
+
+        var blog = await Blog.findOne({ _id: ObjectId(blogUid), author: req.user["_id"] })
+
+        if (!blog)
+            return res.status(404).send({
+                "error": "404-uidNotFound"
+            })
+
+        const cover_image = blog["cover_image"]
+
+        if (!cover_image)
+            return res.status(200).send({
+                "error": null
+            })
+
+        db.filesDelete({ path: "/blogs/covers/" + cover_image })
+            .then(result => {
+                blog["cover_image"] = ""
+                blog.save()
+
+                res.status(200).send({
+                    "error": null
+                })
+            })
+            .catch(err => {
+                res.status(500).send(err)
+            })
+    } catch (e) {
+        return res.status(500).send(e)
+    }
+})
+
 router.post("/blog/cover", User_Auth, blogUploads.single("cover"), async (req, res, next) => {
     try {
         const cover = req.file
@@ -221,7 +252,7 @@ router.post("/blog/cover", User_Auth, blogUploads.single("cover"), async (req, r
         const queries = req.query
         const uid = queries["uid"]
 
-        var blog = await Blog.findOne({ _id: ObjectId(uid) })
+        var blog = await Blog.findOne({ _id: ObjectId(uid), author: req.user["_id"] })
 
         if (!blog)
             return res.status(404).send({
@@ -248,7 +279,7 @@ router.post("/blog/cover", User_Auth, blogUploads.single("cover"), async (req, r
                     })
                 })
 
-            fs.unlinkSync("blog_contents/" + cover.filename, () => { })
+            fs.unlink("blog_contents/" + cover.filename, () => { })
         })
     } catch (e) {
         return res.status(500).send(e)
@@ -331,7 +362,7 @@ router.post("/blog/update", User_Auth, async (req, res, next) => {
                     const newObj = new BlogObjectRequest({
                         requester: req.user["_id"],
                         request_token: token,
-                        timestamp: Date.now()
+                        date_created: Date.now()
                     })
                     newObj.save()
                     imageObjectsTokens.push(token)
@@ -364,7 +395,6 @@ router.post("/blog/update", User_Auth, async (req, res, next) => {
             "result": await Blog.findOne({ _id: ObjectId(blogUid), author: ObjectId(req.user["_id"]) })
         })
     } catch (e) {
-        console.error(e)
         return res.status(500).send(e)
     }
 })
