@@ -20,6 +20,7 @@ const router = new express.Router()
 
 // Regex
 const imageObjectRegex = /<\/Image\/>/
+const imageObjectRegex_2 = /<\/(.+)\/>/
 
 // Router
 router.post("/blog/create", User_Auth, async (req, res, next) => {
@@ -34,6 +35,9 @@ router.post("/blog/create", User_Auth, async (req, res, next) => {
         if (!blog.content)
             blog.content = []
         delete blog.reactions
+        delete blog.comments
+        delete blog.cover_image
+
         blog.timestamp = Date.now()
 
         const newBlog = new Blog(blog)
@@ -184,7 +188,7 @@ router.post("/blog/request", User_Auth, blogUploads.single("image"), async (req,
                     })
                 })
 
-            fs.unlink("blog_contents/" + image.filename, () => { })
+            fs.unlinkSync("blog_contents/" + image.filename, () => { })
         })
     } catch (e) {
         return res.status(500).send(e)
@@ -205,6 +209,160 @@ router.get("/blog/request", async (req, res, next) => {
                 return res.status(403).send(err)
             })
     } catch (e) {
+        return res.status(500).send(e)
+    }
+})
+
+router.post("/blog/cover", User_Auth, blogUploads.single("cover"), async (req, res, next) => {
+    try {
+        const cover = req.file
+
+        const queries = req.query
+        const uid = queries["uid"]
+
+        var blog = await Blog.findOne({ _id: ObjectId(uid) })
+
+        if (!blog)
+            return res.status(404).send({
+                "error": "404-uidNotFound"
+            })
+
+        fs.readFile("blog_contents/" + cover.filename, async (err, data) => {
+            const cover_token = uuidv4()
+            db.filesUpload({ path: "/blogs/covers/" + cover_token + "/cover.png", contents: data, mode: "overwrite" })
+                .then(result => {
+                    blog["cover_image"] = cover_token
+                    blog.save()
+
+                    return res.status(200).send({
+                        "error": null,
+                        "result": {
+                            "cover_token": cover_token
+                        }
+                    })
+                })
+                .catch(err => {
+                    return res.status(500).send({
+                        "error": err
+                    })
+                })
+
+            fs.unlinkSync("blog_contents/" + cover.filename, () => { })
+        })
+    } catch (e) {
+        return res.status(500).send(e)
+    }
+})
+
+router.get("/blog/cover", async (req, res, next) => {
+    try {
+        const queries = req.query
+        const token = queries["token"]
+
+        db.filesDownload({ path: "/blogs/covers/" + token + "/cover.png" })
+            .then(result => {
+                res.set("Content-Type", "image/jpeg");
+                res.status(200).send(result["result"]["fileBinary"]);
+            })
+            .catch(err => {
+                return res.status(403).send(err)
+            })
+    } catch (e) {
+        return res.status(500).send(e)
+    }
+})
+
+router.post("/blog/update", User_Auth, async (req, res, next) => {
+    try {
+        const body = req.body
+        const blogUid = body["blogUid"]
+        var newBlog = body["blog"]
+
+        // Delete/Overwrite sensitive fields (if any)
+        delete newBlog._id
+        delete newBlog._v
+        newBlog.author = req.user["_id"]
+        delete newBlog.reactions
+        delete newBlog.comments
+        delete newBlog.cover_image
+
+        var blog = await Blog.findOne({ _id: ObjectId(blogUid), author: req.user["_id"] })
+
+        if (!blog)
+            return res.status(404).send({
+                "error": "404-uidNotFound"
+            })
+
+        if (newBlog["content"]) {
+            const oldObjects = blog["content"].filter(item => {
+                return item.match(imageObjectRegex_2)
+            })
+            const newObjects = newBlog["content"].filter(item => {
+                return item.match(imageObjectRegex_2)
+            })
+
+            for (var i = 0; i < oldObjects.length; i++) {
+                const obj = oldObjects[i]
+
+                if (!newObjects.includes(obj)) {
+                    // Delete image object from dropbox
+                    db.filesDelete({ path: "/blogs/" + imageObjectRegex_2.exec(obj.toString())[1] })
+                        .then(result => { /* Do nothing */ })
+                        .catch(err => {
+                            console.error(err)
+                        })
+                }
+            }
+
+            var imagesCount = 0
+            for (var i = 0; i < newBlog["content"].length; i++) {
+                const _content = newBlog["content"][i]
+
+                if (_content.match(imageObjectRegex))
+                    imagesCount++
+            }
+
+            if (imagesCount > 0) {
+                var imageObjectsTokens = []
+
+                for (var i = 0; i < imagesCount; i++) {
+                    const token = uuidv4()
+                    const newObj = new BlogObjectRequest({
+                        requester: req.user["_id"],
+                        request_token: token
+                    })
+                    newObj.save()
+                    imageObjectsTokens.push(token)
+                }
+
+                var index = 0
+                for (var i = 0; i < newBlog["content"].length; i++) {
+                    const _content = newBlog["content"][i]
+
+                    if (_content.match(imageObjectRegex))
+                        newBlog.content[i] = "</" + imageObjectsTokens[index++] + "/>"
+                }
+
+                await Blog.findOneAndUpdate({ _id: ObjectId(blogUid), author: ObjectId(req.user["_id"]) }, newBlog)
+
+                return res.status(200).send({
+                    "error": "",
+                    "result": {
+                        "blog": newBlog,
+                        "request_tokens": imageObjectsTokens
+                    }
+                })
+            }
+        }
+
+        await Blog.findOneAndUpdate({ _id: ObjectId(blogUid), author: ObjectId(req.user["_id"]) }, newBlog)
+
+        return res.status(200).send({
+            "error": null,
+            "result": await Blog.findOne({ _id: ObjectId(blogUid), author: ObjectId(req.user["_id"]) })
+        })
+    } catch (e) {
+        console.error(e)
         return res.status(500).send(e)
     }
 })

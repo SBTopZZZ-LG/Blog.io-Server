@@ -2,6 +2,9 @@ const mongoose = require("mongoose")
 const Schema = mongoose.Schema
 
 const schema = new Schema({
+    cover_image: {
+        type: String
+    },
     author: {
         type: String,
         required: true
