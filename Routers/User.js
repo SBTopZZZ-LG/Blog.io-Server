@@ -135,8 +135,12 @@ router.get("/account", async (req, res, next) => {
     try {
         const queries = req.query
         const uid = queries["uid"]
+        const fields = queries["fields"]
 
-        const user = await User.findOne({ _id: ObjectId(uid) }, "-key")
+        var user = await User.findOne({ _id: ObjectId(uid) }, "-key" + (fields ? " " + fields.split('+').join(' ') : ''))
+
+        // Delete sensitive fields
+        delete user.key
 
         return res.status(200).send({
             "error": null,
