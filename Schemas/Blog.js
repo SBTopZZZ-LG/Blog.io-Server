@@ -49,7 +49,7 @@ const schema = new Schema({
                 required: true
             },
             content: {
-                type: Array,
+                type: String,
                 required: true
             },
             reactions: {
@@ -72,7 +72,7 @@ const schema = new Schema({
             },
             timestamp: {
                 type: Number,
-                default: Date.now()
+                required: true
             }
         }
     }],

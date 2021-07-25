@@ -61,7 +61,8 @@ router.post("/blog/create", User_Auth, async (req, res, next) => {
                 const token = uuidv4()
                 const newObj = new BlogObjectRequest({
                     requester: req.user["_id"],
-                    request_token: token
+                    request_token: token,
+                    timestamp: Date.now()
                 })
                 newObj.save()
                 imageObjectsTokens.push(token)
@@ -150,7 +151,6 @@ router.get("/blogs", async (req, res, next) => {
             "result": allBlogs
         })
     } catch (e) {
-        console.error(e)
         return res.status(500).send(e)
     }
 })
@@ -330,7 +330,8 @@ router.post("/blog/update", User_Auth, async (req, res, next) => {
                     const token = uuidv4()
                     const newObj = new BlogObjectRequest({
                         requester: req.user["_id"],
-                        request_token: token
+                        request_token: token,
+                        timestamp: Date.now()
                     })
                     newObj.save()
                     imageObjectsTokens.push(token)
@@ -364,6 +365,368 @@ router.post("/blog/update", User_Auth, async (req, res, next) => {
         })
     } catch (e) {
         console.error(e)
+        return res.status(500).send(e)
+    }
+})
+
+router.post("/blog/remove", User_Auth, async (req, res, next) => {
+    try {
+        const body = req.body
+        const blogUid = body["blogUid"]
+
+        const blog = await Blog.findOne({ _id: ObjectId(blogUid), author: req.user["_id"] })
+
+        if (!blog)
+            return res.status(404).send({
+                "error": "404-uidNotFound"
+            })
+
+        blog.remove()
+
+        req.user["blogs_posted"] = req.user["blogs_posted"].filter(item => {
+            return item.toString() != blogUid.toString()
+        })
+        req.user.save()
+
+        return res.status(200).send({
+            "error": null
+        })
+    } catch (e) {
+        return res.status(500).send(e)
+    }
+})
+
+router.post("/blog/react/like", User_Auth, async (req, res, next) => {
+    try {
+        const body = req.body
+        const blogUid = body["blogUid"]
+
+        const queries = req.query
+        const toggle = queries["toggle"] || "false"
+
+        var blog = await Blog.findOne({ _id: ObjectId(blogUid) })
+
+        if (!blog)
+            return res.status(404).send({
+                "error": "404-uidNotFound"
+            })
+
+        if (blog["author"] == req.user["_id"])
+            return res.status(403).send({
+                "error": "403-notAllowed"
+            })
+
+        if (!blog["reactions"]["likes"].includes(req.user["_id"])) {
+            blog["reactions"]["like_count"] = blog["reactions"]["like_count"] + 1
+            blog["reactions"]["likes"].push(req.user["_id"])
+
+            if (blog["reactions"]["dislikes"].includes(req.user["_id"])) {
+                blog["reactions"]["dislike_count"] = blog["reactions"]["dislike_count"] - 1
+                blog["reactions"]["dislikes"] = blog["reactions"]["dislikes"].filter(item => {
+                    return item.toString() != req.user["_id"].toString()
+                })
+            }
+        } else if (toggle.toString() == "true")
+            if (!blog["reactions"]["dislikes"].includes(req.user["_id"])) {
+                blog["reactions"]["like_count"] = blog["reactions"]["like_count"] - 1
+                blog["reactions"]["likes"] = blog["reactions"]["likes"].filter(item => {
+                    return item.toString() != req.user["_id"].toString()
+                })
+            }
+
+        blog.save()
+
+        return res.status(200).send({
+            "error": null,
+            "result": blog
+        })
+    } catch (e) {
+        return res.status(500).send(e)
+    }
+})
+
+router.post("/blog/react/dislike", User_Auth, async (req, res, next) => {
+    try {
+        const body = req.body
+        const blogUid = body["blogUid"]
+
+        const queries = req.query
+        const toggle = queries["toggle"] || "false"
+
+        var blog = await Blog.findOne({ _id: ObjectId(blogUid) })
+
+        if (!blog)
+            return res.status(404).send({
+                "error": "404-uidNotFound"
+            })
+
+        if (blog["author"] == req.user["_id"])
+            return res.status(403).send({
+                "error": "403-notAllowed"
+            })
+
+        if (!blog["reactions"]["dislikes"].includes(req.user["_id"])) {
+            blog["reactions"]["dislike_count"] = blog["reactions"]["dislike_count"] + 1
+            blog["reactions"]["dislikes"].push(req.user["_id"])
+
+            if (blog["reactions"]["likes"].includes(req.user["_id"])) {
+                blog["reactions"]["like_count"] = blog["reactions"]["like_count"] - 1
+                blog["reactions"]["likes"] = blog["reactions"]["likes"].filter(item => {
+                    return item.toString() != req.user["_id"].toString()
+                })
+            }
+        } else if (toggle.toString() == "true")
+            if (!blog["reactions"]["likes"].includes(req.user["_id"])) {
+                blog["reactions"]["dislike_count"] = blog["reactions"]["dislike_count"] - 1
+                blog["reactions"]["dislikes"] = blog["reactions"]["dislikes"].filter(item => {
+                    return item.toString() != req.user["_id"].toString()
+                })
+            }
+
+        blog.save()
+
+        return res.status(200).send({
+            "error": null,
+            "result": blog
+        })
+    } catch (e) {
+        return res.status(500).send(e)
+    }
+})
+
+router.get("/blog/react/comments", async (req, res, next) => {
+    try {
+        const queries = req.query
+        const blogUid = queries["blogUid"]
+
+        const blog = await Blog.findOne({ _id: ObjectId(blogUid) })
+
+        if (!blog)
+            return res.status(404).send({
+                "error": "404-uidNotFound"
+            })
+
+        return res.status(200).send({
+            "error": null,
+            "result": blog["comments"]
+        })
+    } catch (e) {
+        return res.status(500).send(e)
+    }
+})
+
+router.get("/blog/react/comment", async (req, res, next) => {
+    try {
+        const queries = req.query
+        const blogUid = queries["blog_id"]
+        const commentUid = queries["comment_id"]
+
+        const blog = await Blog.findOne({ _id: ObjectId(blogUid) })
+
+        if (!blog)
+            return res.status(404).send({
+                "error": "404-uidNotFound"
+            })
+
+        var comment = blog["comments"].filter(item => {
+            return item["_id"].toString() == commentUid.toString()
+        })
+
+        if (comment.length > 0)
+            comment = comment[0]["comment"]
+        else
+            return res.status(404).send({
+                "error": "404-commentNotFound"
+            })
+
+        return res.status(200).send({
+            "error": null,
+            "result": comment
+        })
+    } catch (e) {
+        console.error(e)
+        return res.status(500).send(e)
+    }
+})
+
+router.post("/blog/react/comment", User_Auth, async (req, res, next) => {
+    try {
+        const body = req.body
+        const blogUid = body["blogUid"]
+        const comment = body["comment"].toString()
+
+        var blog = await Blog.findOne({ _id: ObjectId(blogUid) })
+
+        if (!blog)
+            return res.status(404).send({
+                "error": "404-uidNotFound"
+            })
+
+        blog["comments"].push({
+            comment: {
+                author: req.user["_id"],
+                content: comment,
+                timestamp: Date.now()
+            }
+        })
+
+        blog.save()
+
+        return res.status(200).send({
+            "error": null
+        })
+    } catch (e) {
+        return res.status(500).send(e)
+    }
+})
+
+router.post("/blog/react/comment/remove", User_Auth, async (req, res, next) => {
+    try {
+        const body = req.body
+        const blogUid = body["blogUid"]
+        const commentUid = body["commentUid"]
+
+        const blog = await Blog.findOne({ _id: ObjectId(blogUid) })
+
+        if (!blog)
+            return res.status(404).send({
+                "error": "404-uidNotFound"
+            })
+
+        blog["comments"] = blog["comments"].filter(item => {
+            return !((item["_id"].toString() == commentUid.toString()) && item["comment"]["author"]["_id"].toString() == req.user["_id"].toString())
+        })
+
+        blog.save()
+
+        return res.status(200).send({
+            "error": null
+        })
+    } catch (e) {
+        return res.status(500).send(e)
+    }
+})
+
+router.post("/blog/react/comment/like", User_Auth, async (req, res, next) => {
+    try {
+        const body = req.body
+        const blogUid = body["blogUid"]
+        const commentUid = body["commentUid"]
+
+        const queries = req.query
+        const toggle = queries["toggle"] || "false"
+
+        var blog = await Blog.findOne({ _id: ObjectId(blogUid) })
+
+        if (!blog)
+            return res.status(404).send({
+                "error": "404-uidNotFound"
+            })
+
+        var index = -1
+        for (var i = 0; i < blog["comments"].length; i++)
+            if (blog["comments"][i]["_id"].toString() == commentUid.toString()) {
+                index = i
+                break
+            }
+
+        if (index == -1)
+            return res.status(404).send({
+                "error": "404-commentNotFound"
+            })
+
+        if (blog["comments"][index]["comment"]["author"] == req.user["_id"])
+            return res.status(403).send({
+                "error": "403-notAllowed"
+            })
+
+        if (!blog["comments"][index]["comment"]["reactions"]["likes"].includes(req.user["_id"])) {
+            blog["comments"][index]["comment"]["reactions"]["like_count"] = blog["comments"][index]["comment"]["reactions"]["like_count"] + 1
+            blog["comments"][index]["comment"]["reactions"]["likes"].push(req.user["_id"])
+
+            if (blog["comments"][index]["comment"]["reactions"]["dislikes"].includes(req.user["_id"])) {
+                blog["comments"][index]["comment"]["reactions"]["dislike_count"] = blog["comments"][index]["comment"]["reactions"]["dislike_count"] - 1
+                blog["comments"][index]["comment"]["reactions"]["dislikes"] = blog["comments"][index]["comment"]["reactions"]["dislikes"].filter(item => {
+                    return item.toString() != req.user["_id"].toString()
+                })
+            }
+        } else if (toggle.toString() == "true")
+            if (!blog["comments"][index]["comment"]["reactions"]["dislikes"].includes(req.user["_id"])) {
+                blog["comments"][index]["comment"]["reactions"]["like_count"] = blog["comments"][index]["comment"]["reactions"]["like_count"] - 1
+                blog["comments"][index]["comment"]["reactions"]["likes"] = blog["comments"][index]["comment"]["reactions"]["likes"].filter(item => {
+                    return item.toString() != req.user["_id"].toString()
+                })
+            }
+
+        blog.save()
+
+        return res.status(200).send({
+            "error": null,
+            "result": blog
+        })
+    } catch (e) {
+        return res.status(500).send(e)
+    }
+})
+
+router.post("/blog/react/comment/dislike", User_Auth, async (req, res, next) => {
+    try {
+        const body = req.body
+        const blogUid = body["blogUid"]
+        const commentUid = body["commentUid"]
+
+        const queries = req.query
+        const toggle = queries["toggle"] || "false"
+
+        var blog = await Blog.findOne({ _id: ObjectId(blogUid) })
+
+        if (!blog)
+            return res.status(404).send({
+                "error": "404-uidNotFound"
+            })
+
+        var index = -1
+        for (var i = 0; i < blog["comments"].length; i++)
+            if (blog["comments"][i]["_id"].toString() == commentUid.toString()) {
+                index = i
+                break
+            }
+
+        if (index == -1)
+            return res.status(404).send({
+                "error": "404-commentNotFound"
+            })
+
+        if (blog["comments"][index]["comment"]["author"] == req.user["_id"])
+            return res.status(403).send({
+                "error": "403-notAllowed"
+            })
+
+        if (!blog["comments"][index]["comment"]["reactions"]["dislikes"].includes(req.user["_id"])) {
+            blog["comments"][index]["comment"]["reactions"]["dislike_count"] = blog["comments"][index]["comment"]["reactions"]["dislike_count"] + 1
+            blog["comments"][index]["comment"]["reactions"]["dislikes"].push(req.user["_id"])
+
+            if (blog["comments"][index]["comment"]["reactions"]["likes"].includes(req.user["_id"])) {
+                blog["comments"][index]["comment"]["reactions"]["like_count"] = blog["comments"][index]["comment"]["reactions"]["like_count"] - 1
+                blog["comments"][index]["comment"]["reactions"]["likes"] = blog["comments"][index]["comment"]["reactions"]["likes"].filter(item => {
+                    return item.toString() != req.user["_id"].toString()
+                })
+            }
+        } else if (toggle.toString() == "true")
+            if (!blog["comments"][index]["comment"]["reactions"]["likes"].includes(req.user["_id"])) {
+                blog["comments"][index]["comment"]["reactions"]["dislike_count"] = blog["comments"][index]["comment"]["reactions"]["dislike_count"] - 1
+                blog["comments"][index]["comment"]["reactions"]["dislikes"] = blog["comments"][index]["comment"]["reactions"]["dislikes"].filter(item => {
+                    return item.toString() != req.user["_id"].toString()
+                })
+            }
+
+        blog.save()
+
+        return res.status(200).send({
+            "error": null,
+            "result": blog
+        })
+    } catch (e) {
         return res.status(500).send(e)
     }
 })

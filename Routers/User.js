@@ -334,6 +334,20 @@ router.get("/following", async (req, res, next) => {
     }
 })
 
+router.post("/signOut", User_Auth, async (req, res, next) => {
+    try {
+        req.user["login_token"] = ""
+
+        req.user.save()
+
+        return res.status(200).send({
+            "error": null
+        })
+    } catch (e) {
+        return res.status(500).send(e)
+    }
+})
+
 module.exports.router = function (_db) {
     db = _db
     return router

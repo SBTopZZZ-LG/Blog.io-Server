@@ -12,7 +12,7 @@ const schema = new Schema({
     },
     date_created: {
         type: Number,
-        default: Date.now()
+        required: true
     }
 })
 
