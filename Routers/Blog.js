@@ -1,7 +1,6 @@
 // Required
 const express = require("express")
 const { v4: uuidv4 } = require("uuid")
-const CryptoJS = require("crypto-js")
 const Blog = require("../Schemas/Blog")
 const BlogObjectRequest = require("../Schemas/BlogObjectRequest")
 const User_Auth = require("../Middlewares/User_Auth")
@@ -17,6 +16,8 @@ var blogUploads = multer({ dest: 'blog_contents/' })
 
 // Constants
 const router = new express.Router()
+const CLEANUP_DELAY = 5 // Minutes
+const BLOG_REQUEST_TIMEOUT = 60 // Minutes
 
 // Regex
 const imageObjectRegex = /<\/Image\/>/
@@ -369,5 +370,18 @@ router.post("/blog/update", User_Auth, async (req, res, next) => {
 
 module.exports.router = function (_db) {
     db = _db
+
+    // Cleanup service
+    const cleaner = async () => {
+        var docs = await BlogObjectRequest.find({}).where('date_created').gt(Date.now() + (BLOG_REQUEST_TIMEOUT * 60 * 1000))
+
+        if (docs.length > 0)
+            console.log("Cleaning up", docs.length, "incomplete blog requests...")
+
+        docs.forEach(item => item.remove())
+    }
+    cleaner() // Call at first once
+    setInterval(cleaner, CLEANUP_DELAY * 60 * 1000)
+
     return router
 }
