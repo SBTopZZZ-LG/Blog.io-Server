@@ -104,9 +104,50 @@ router.get("/blog", async (req, res, next) => {
     try {
         const queries = req.query
         const uid = queries["uid"]
-        const fields = queries["fields"]
+        const fields = queries["fields"] || ""
 
-        const blog = await Blog.findOne({ _id: ObjectId(uid) }, (fields ? fields.split('+').join(' ') : ''))
+        const blog = await Blog.findOne({ _id: ObjectId(uid) }, fields.split('+').join(' '))
+
+        if (!blog)
+            return res.status(404).send({
+                "error": "404-uidNotFound"
+            })
+
+        if (blog["visibility"] == "private")
+            return res.status(403).send({
+                "error": "403-cannotGetPrivateBlog"
+            })
+
+        return res.status(200).send({
+            "error": null,
+            "result": blog
+        })
+    } catch (e) {
+        console.error(e)
+        return res.status(500).send(e)
+    }
+})
+
+router.post("/blog", User_Auth, async (req, res, next) => {
+    try {
+        const queries = req.query
+        const fields = queries["fields"] || ""
+
+        const body = req.body
+        const uid = body["uid"]
+        const blogUid = body["blogUid"]
+
+        const blog = await Blog.findOne({ _id: ObjectId(blogUid) }, fields.split('+').join(' '))
+
+        if (!blog)
+            return res.status(404).send({
+                "error": "404-uidNotFound"
+            })
+
+        if (blog["visibility"] == "private" && blog["author"] != ObjectId(uid))
+            return res.status(403).send({
+                "error": "403-cannotGetPrivateBlog"
+            })
 
         return res.status(200).send({
             "error": null,
@@ -121,10 +162,61 @@ router.get("/blog", async (req, res, next) => {
 router.get("/blogs", async (req, res, next) => {
     try {
         const queries = req.query
-        const uid = queries["uid"]
+        const uid = queries["uid"] || ""
         const fields = queries["fields"]
         const count = queries["count"] == undefined ? null : parseInt(queries["count"])
         const timestamp = queries["timestamp"]
+        const ts_type = parseInt(queries["ts_type"] || -1)
+        const ts_sort = parseInt(queries["ts_sort"] || -1)
+
+        if (uid) {
+            const user = await User.findOne({ _id: ObjectId(uid) }).sort({ timestamp: -1 })
+
+            if (!user)
+                return res.status(404).send({
+                    "error": "404-uidNotFound"
+                })
+        }
+
+        var allBlogs = null
+
+        if (count)
+            if (timestamp)
+                if (ts_type == 1)
+                    allBlogs = await Blog.find(uid ? { author: ObjectId(uid), visibility: "public" } : { visibility: "public" }, fields.split('+').join(' ')).sort({ timestamp: ts_sort }).limit(count).where('timestamp').gt(timestamp.toString())
+                else
+                    allBlogs = await Blog.find(uid ? { author: ObjectId(uid), visibility: "public" } : { visibility: "public" }, fields.split('+').join(' ')).sort({ timestamp: ts_sort }).limit(count).where('timestamp').lt(timestamp.toString())
+            else
+                allBlogs = await Blog.find(uid ? { author: ObjectId(uid), visibility: "public" } : { visibility: "public" }, fields.split('+').join(' ')).sort({ timestamp: ts_sort }).limit(count)
+        else
+            if (timestamp)
+                if (ts_type == 1)
+                    allBlogs = await Blog.find(uid ? { author: ObjectId(uid), visibility: "public" } : { visibility: "public" }, fields.split('+').join(' ')).sort({ timestamp: ts_sort }).where('timestamp').gt(timestamp.toString())
+                else
+                    allBlogs = await Blog.find(uid ? { author: ObjectId(uid), visibility: "public" } : { visibility: "public" }, fields.split('+').join(' ')).sort({ timestamp: ts_sort }).where('timestamp').lt(timestamp.toString())
+            else
+                allBlogs = await Blog.find(uid ? { author: ObjectId(uid), visibility: "public" } : { visibility: "public" }, fields.split('+').join(' ')).sort({ timestamp: ts_sort })
+
+        return res.status(200).send({
+            "error": null,
+            "result": allBlogs
+        })
+    } catch (e) {
+        return res.status(500).send(e)
+    }
+})
+
+router.post("/blogs", User_Auth, async (req, res, next) => {
+    try {
+        const queries = req.query
+        const fields = queries["fields"] || ""
+        const count = queries["count"] == undefined ? null : parseInt(queries["count"])
+        const timestamp = queries["timestamp"]
+        const ts_type = parseInt(queries["ts_type"] || -1)
+        const ts_sort = parseInt(queries["ts_sort"] || -1)
+
+        const body = req.body
+        const uid = body["uid"]
 
         const user = await User.findOne({ _id: ObjectId(uid) })
 
@@ -137,14 +229,20 @@ router.get("/blogs", async (req, res, next) => {
 
         if (count)
             if (timestamp)
-                allBlogs = await Blog.find({ author: ObjectId(uid) }, (fields ? fields.split('+').join(' ') : '')).sort({ timestamp: -1 }).limit(count).where('timestamp').lt(timestamp.toString())
+                if (ts_type == 1)
+                    allBlogs = await Blog.find((uid.toString() == req.user["_id"].toString() ? { author: ObjectId(uid) } : { author: ObjectId(uid), author: "public" }), fields.split('+').join(' ')).sort({ timestamp: ts_sort }).limit(count).where('timestamp').gt(timestamp.toString())
+                else
+                    allBlogs = await Blog.find((uid.toString() == req.user["_id"].toString() ? { author: ObjectId(uid) } : { author: ObjectId(uid), author: "public" }), fields.split('+').join(' ')).sort({ timestamp: ts_sort }).limit(count).where('timestamp').lt(timestamp.toString())
             else
-                allBlogs = await Blog.find({ author: ObjectId(uid) }, (fields ? fields.split('+').join(' ') : '')).sort({ timestamp: -1 }).limit(count)
+                allBlogs = await Blog.find((uid.toString() == req.user["_id"].toString() ? { author: ObjectId(uid) } : { author: ObjectId(uid), author: "public" }), fields.split('+').join(' ')).sort({ timestamp: ts_sort }).limit(count)
         else
             if (timestamp)
-                allBlogs = await Blog.find({ author: ObjectId(uid) }, (fields ? fields.split('+').join(' ') : '')).sort({ timestamp: -1 }).where('timestamp').lt(timestamp.toString())
+                if (ts_type == 1)
+                    allBlogs = await Blog.find((uid.toString() == req.user["_id"].toString() ? { author: ObjectId(uid) } : { author: ObjectId(uid), author: "public" }), fields.split('+').join(' ')).sort({ timestamp: ts_sort }).where('timestamp').gt(timestamp.toString())
+                else
+                    allBlogs = await Blog.find((uid.toString() == req.user["_id"].toString() ? { author: ObjectId(uid) } : { author: ObjectId(uid), author: "public" }), fields.split('+').join(' ')).sort({ timestamp: ts_sort }).where('timestamp').lt(timestamp.toString())
             else
-                allBlogs = await Blog.find({ author: ObjectId(uid) }, (fields ? fields.split('+').join(' ') : '')).sort({ timestamp: -1 })
+                allBlogs = await Blog.find((uid.toString() == req.user["_id"].toString() ? { author: ObjectId(uid) } : { author: ObjectId(uid), author: "public" }), fields.split('+').join(' ')).sort({ timestamp: ts_sort })
 
         return res.status(200).send({
             "error": null,
@@ -757,6 +855,266 @@ router.post("/blog/react/comment/dislike", User_Auth, async (req, res, next) => 
             "result": blog
         })
     } catch (e) {
+        return res.status(500).send(e)
+    }
+})
+
+router.get("/blog/search/title", async (req, res, next) => {
+    try {
+        const queries = req.query
+        const regex = queries["regex"]
+        const options = queries["options"] || ""
+        const fields = queries["fields"] || ""
+        const timestamp = queries["timestamp"]
+        const ts_type = parseInt(queries["ts_type"] || -1)
+        const ts_sort = parseInt(queries["ts_sort"] || -1)
+        const count = parseInt(queries["count"])
+
+        var blogs = null
+
+        if (timestamp)
+            if (count)
+                if (ts_type == 1)
+                    blogs = await Blog.find({ visibility: "public", title: { $regex: regex, $options: options } }, fields.split('+').join(' ')).sort({ timestamp: ts_sort }).limit(count).where('timestamp').gt(timestamp.toString())
+                else
+                    blogs = await Blog.find({ visibility: "public", title: { $regex: regex, $options: options } }, fields.split('+').join(' ')).sort({ timestamp: ts_sort }).limit(count).where('timestamp').lt(timestamp.toString())
+            else
+                if (ts_type == 1)
+                    blogs = await Blog.find({ visibility: "public", title: { $regex: regex, $options: options } }, fields.split('+').join(' ')).sort({ timestamp: ts_sort }).where('timestamp').gt(timestamp.toString())
+                else
+                    blogs = await Blog.find({ visibility: "public", title: { $regex: regex, $options: options } }, fields.split('+').join(' ')).sort({ timestamp: ts_sort }).where('timestamp').lt(timestamp.toString())
+        else
+            if (count)
+                blogs = await Blog.find({ visibility: "public", title: { $regex: regex, $options: options } }, fields.split('+').join(' ')).sort({ timestamp: ts_sort }).limit(count)
+            else
+                blogs = await Blog.find({ visibility: "public", title: { $regex: regex, $options: options } }, fields.split('+').join(' ')).sort({ timestamp: ts_sort })
+
+        return res.status(200).send({
+            "error": null,
+            "result": blogs
+        })
+    } catch (e) {
+        return res.status(500).send(e)
+    }
+})
+
+router.post("/blog/search/title", User_Auth, async (req, res, next) => {
+    try {
+        const queries = req.query
+        const regex = queries["regex"]
+        const options = queries["options"] || ""
+        const fields = queries["fields"] || ""
+        const timestamp = queries["timestamp"]
+        const ts_type = parseInt(queries["ts_type"] || -1)
+        const ts_sort = parseInt(queries["ts_sort"] || -1)
+        const count = parseInt(queries["count"])
+
+        var blogs = null
+
+        if (timestamp)
+            if (count)
+                if (ts_type == 1)
+                    blogs = await Blog.find({ $or: [{ visibility: "public" }, { author: req.user["_id"] }], title: { $regex: regex, $options: options } }, fields.split('+').join(' ')).sort({ timestamp: ts_sort }).limit(count).where('timestamp').gt(timestamp.toString())
+                else
+                    blogs = await Blog.find({ $or: [{ visibility: "public" }, { author: req.user["_id"] }], title: { $regex: regex, $options: options } }, fields.split('+').join(' ')).sort({ timestamp: ts_sort }).limit(count).where('timestamp').lt(timestamp.toString())
+            else
+                if (ts_type == 1)
+                    blogs = await Blog.find({ $or: [{ visibility: "public" }, { author: req.user["_id"] }], title: { $regex: regex, $options: options } }, fields.split('+').join(' ')).sort({ timestamp: ts_sort }).where('timestamp').gt(timestamp.toString())
+                else
+                    blogs = await Blog.find({ $or: [{ visibility: "public" }, { author: req.user["_id"] }], title: { $regex: regex, $options: options } }, fields.split('+').join(' ')).sort({ timestamp: ts_sort }).where('timestamp').lt(timestamp.toString())
+        else
+            if (count)
+                blogs = await Blog.find({ $or: [{ visibility: "public" }, { author: req.user["_id"] }], title: { $regex: regex, $options: options } }, fields.split('+').join(' ')).sort({ timestamp: ts_sort }).limit(count)
+            else
+                blogs = await Blog.find({ $or: [{ visibility: "public" }, { author: req.user["_id"] }], title: { $regex: regex, $options: options } }, fields.split('+').join(' ')).sort({ timestamp: ts_sort })
+
+        return res.status(200).send({
+            "error": null,
+            "result": blogs
+        })
+    } catch (e) {
+        return res.status(500).send(e)
+    }
+})
+
+router.get("/blogs/:mode/likes", async (req, res, next) => {
+    try {
+        const queries = req.query
+        const uid = queries["uid"]
+        const fields = queries["fields"] || ""
+        const count = queries["count"] == undefined ? null : parseInt(queries["count"])
+        const timestamp = queries["timestamp"]
+        const ts_type = parseInt(queries["ts_type"] || -1)
+
+        const mode = req.params.mode
+
+        if (uid) {
+            const user = await User.findOne({ _id: ObjectId(uid) })
+
+            if (!user)
+                return res.status(404).send({
+                    "error": "404-uidNotFound"
+                })
+        }
+
+        var allBlogs = null
+
+        if (count)
+            if (timestamp)
+                if (ts_type == 1)
+                    allBlogs = await Blog.find(uid ? { author: ObjectId(uid), visibility: "public" } : { visibility: "public" }, fields.split('+').join(' ')).sort({ "reactions.like_count": mode == "asc" ? 1 : -1 }).limit(count).where('timestamp').gt(timestamp.toString())
+                else
+                    allBlogs = await Blog.find(uid ? { author: ObjectId(uid), visibility: "public" } : { visibility: "public" }, fields.split('+').join(' ')).sort({ "reactions.like_count": mode == "asc" ? 1 : -1 }).limit(count).where('timestamp').lt(timestamp.toString())
+            else
+                allBlogs = await Blog.find(uid ? { author: ObjectId(uid), visibility: "public" } : { visibility: "public" }, fields.split('+').join(' ')).sort({ "reactions.like_count": mode == "asc" ? 1 : -1 }).limit(count)
+        else
+            if (timestamp)
+                if (ts_type == 1)
+                    allBlogs = await Blog.find(uid ? { author: ObjectId(uid), visibility: "public" } : { visibility: "public" }, fields.split('+').join(' ')).sort({ "reactions.like_count": mode == "asc" ? 1 : -1 }).where('timestamp').gt(timestamp.toString())
+                else
+                    allBlogs = await Blog.find(uid ? { author: ObjectId(uid), visibility: "public" } : { visibility: "public" }, fields.split('+').join(' ')).sort({ "reactions.like_count": mode == "asc" ? 1 : -1 }).where('timestamp').lt(timestamp.toString())
+            else
+                allBlogs = await Blog.find(uid ? { author: ObjectId(uid), visibility: "public" } : { visibility: "public" }, fields.split('+').join(' ')).sort({ "reactions.like_count": mode == "asc" ? 1 : -1 })
+
+        return res.status(200).send({
+            "error": null,
+            "result": allBlogs
+        })
+    } catch (e) {
+        console.error(e)
+        return res.status(500).send(e)
+    }
+})
+
+router.post("/blogs/:mode/likes", User_Auth, async (req, res, next) => {
+    try {
+        const queries = req.query
+        const fields = queries["fields"] || ""
+        const count = queries["count"] == undefined ? null : parseInt(queries["count"])
+        const timestamp = queries["timestamp"]
+        const ts_type = parseInt(queries["ts_type"] || -1)
+
+        const body = req.body
+        const uid = body["uid"]
+
+        const mode = req.params.mode
+
+        var allBlogs = null
+
+        if (count)
+            if (timestamp)
+                if (ts_type == 1)
+                    allBlogs = await Blog.find({ $or: [{ author: ObjectId(uid) }, { $and: [{ author: { $ne: ObjectId(uid) } }, { visibility: "public" }] }] }, fields.split('+').join(' ')).sort({ "reactions.like_count": mode == "asc" ? 1 : -1 }).limit(count).where('timestamp').gt(timestamp.toString())
+                else
+                    allBlogs = await Blog.find({ $or: [{ author: ObjectId(uid) }, { $and: [{ author: { $ne: ObjectId(uid) } }, { visibility: "public" }] }] }, fields.split('+').join(' ')).sort({ "reactions.like_count": mode == "asc" ? 1 : -1 }).limit(count).where('timestamp').lt(timestamp.toString())
+            else
+                allBlogs = await Blog.find({ $or: [{ author: ObjectId(uid) }, { $and: [{ author: { $ne: ObjectId(uid) } }, { visibility: "public" }] }] }, fields.split('+').join(' ')).sort({ "reactions.like_count": mode == "asc" ? 1 : -1 }).limit(count)
+        else
+            if (timestamp)
+                if (ts_type == 1)
+                    allBlogs = await Blog.find({ $or: [{ author: ObjectId(uid) }, { $and: [{ author: { $ne: ObjectId(uid) } }, { visibility: "public" }] }] }, fields.split('+').join(' ')).sort({ "reactions.like_count": mode == "asc" ? 1 : -1 }).where('timestamp').gt(timestamp.toString())
+                else
+                    allBlogs = await Blog.find({ $or: [{ author: ObjectId(uid) }, { $and: [{ author: { $ne: ObjectId(uid) } }, { visibility: "public" }] }] }, fields.split('+').join(' ')).sort({ "reactions.like_count": mode == "asc" ? 1 : -1 }).where('timestamp').lt(timestamp.toString())
+            else
+                allBlogs = await Blog.find({ $or: [{ author: ObjectId(uid) }, { $and: [{ author: { $ne: ObjectId(uid) } }, { visibility: "public" }] }] }, fields.split('+').join(' ')).sort({ "reactions.like_count": mode == "asc" ? 1 : -1 })
+
+        return res.status(200).send({
+            "error": null,
+            "result": allBlogs
+        })
+    } catch (e) {
+        console.error(e)
+        return res.status(500).send(e)
+    }
+})
+
+router.get("/blogs/:mode/dislikes", async (req, res, next) => {
+    try {
+        const queries = req.query
+        const uid = queries["uid"]
+        const fields = queries["fields"] || ""
+        const count = queries["count"] == undefined ? null : parseInt(queries["count"])
+        const timestamp = queries["timestamp"]
+        const ts_type = parseInt(queries["ts_type"] || -1)
+
+        const mode = req.params.mode
+
+        if (uid) {
+            const user = await User.findOne({ _id: ObjectId(uid) })
+
+            if (!user)
+                return res.status(404).send({
+                    "error": "404-uidNotFound"
+                })
+        }
+
+        var allBlogs = null
+
+        if (count)
+            if (timestamp)
+                if (ts_type == 1)
+                    allBlogs = await Blog.find(uid ? { author: ObjectId(uid), visibility: "public" } : { visibility: "public" }, fields.split('+').join(' ')).sort({ "reactions.dislike_count": mode == "asc" ? 1 : -1 }).limit(count).where('timestamp').gt(timestamp.toString())
+                else
+                    allBlogs = await Blog.find(uid ? { author: ObjectId(uid), visibility: "public" } : { visibility: "public" }, fields.split('+').join(' ')).sort({ "reactions.dislike_count": mode == "asc" ? 1 : -1 }).limit(count).where('timestamp').lt(timestamp.toString())
+            else
+                allBlogs = await Blog.find(uid ? { author: ObjectId(uid), visibility: "public" } : { visibility: "public" }, fields.split('+').join(' ')).sort({ "reactions.dislike_count": mode == "asc" ? 1 : -1 }).limit(count)
+        else
+            if (timestamp)
+                if (ts_type == 1)
+                    allBlogs = await Blog.find(uid ? { author: ObjectId(uid), visibility: "public" } : { visibility: "public" }, fields.split('+').join(' ')).sort({ "reactions.dislike_count": mode == "asc" ? 1 : -1 }).where('timestamp').gt(timestamp.toString())
+                else
+                    allBlogs = await Blog.find(uid ? { author: ObjectId(uid), visibility: "public" } : { visibility: "public" }, fields.split('+').join(' ')).sort({ "reactions.dislike_count": mode == "asc" ? 1 : -1 }).where('timestamp').lt(timestamp.toString())
+            else
+                allBlogs = await Blog.find(uid ? { author: ObjectId(uid), visibility: "public" } : { visibility: "public" }, fields.split('+').join(' ')).sort({ "reactions.dislike_count": mode == "asc" ? 1 : -1 })
+
+        return res.status(200).send({
+            "error": null,
+            "result": allBlogs
+        })
+    } catch (e) {
+        console.error(e)
+        return res.status(500).send(e)
+    }
+})
+
+router.post("/blogs/:mode/dislikes", User_Auth, async (req, res, next) => {
+    try {
+        const queries = req.query
+        const fields = queries["fields"] || ""
+        const count = queries["count"] == undefined ? null : parseInt(queries["count"])
+        const timestamp = queries["timestamp"]
+        const ts_type = parseInt(queries["ts_type"] || -1)
+
+        const body = req.body
+        const uid = body["uid"]
+
+        const mode = req.params.mode
+
+        var allBlogs = null
+
+        if (count)
+            if (timestamp)
+                if (ts_type == 1)
+                    allBlogs = await Blog.find({ $or: [{ author: ObjectId(uid) }, { $and: [{ author: { $ne: ObjectId(uid) } }, { visibility: "public" }] }] }, fields.split('+').join(' ')).sort({ "reactions.dislike_count": mode == "asc" ? 1 : -1 }).limit(count).where('timestamp').gt(timestamp.toString())
+                else
+                    allBlogs = await Blog.find({ $or: [{ author: ObjectId(uid) }, { $and: [{ author: { $ne: ObjectId(uid) } }, { visibility: "public" }] }] }, fields.split('+').join(' ')).sort({ "reactions.dislike_count": mode == "asc" ? 1 : -1 }).limit(count).where('timestamp').lt(timestamp.toString())
+            else
+                allBlogs = await Blog.find({ $or: [{ author: ObjectId(uid) }, { $and: [{ author: { $ne: ObjectId(uid) } }, { visibility: "public" }] }] }, fields.split('+').join(' ')).sort({ "reactions.dislike_count": mode == "asc" ? 1 : -1 }).limit(count)
+        else
+            if (timestamp)
+                if (ts_type == 1)
+                    allBlogs = await Blog.find({ $or: [{ author: ObjectId(uid) }, { $and: [{ author: { $ne: ObjectId(uid) } }, { visibility: "public" }] }] }, fields.split('+').join(' ')).sort({ "reactions.dislike_count": mode == "asc" ? 1 : -1 }).where('timestamp').gt(timestamp.toString())
+                else
+                    allBlogs = await Blog.find({ $or: [{ author: ObjectId(uid) }, { $and: [{ author: { $ne: ObjectId(uid) } }, { visibility: "public" }] }] }, fields.split('+').join(' ')).sort({ "reactions.dislike_count": mode == "asc" ? 1 : -1 }).where('timestamp').lt(timestamp.toString())
+            else
+                allBlogs = await Blog.find({ $or: [{ author: ObjectId(uid) }, { $and: [{ author: { $ne: ObjectId(uid) } }, { visibility: "public" }] }] }, fields.split('+').join(' ')).sort({ "reactions.dislike_count": mode == "asc" ? 1 : -1 })
+
+        return res.status(200).send({
+            "error": null,
+            "result": allBlogs
+        })
+    } catch (e) {
+        console.error(e)
         return res.status(500).send(e)
     }
 })

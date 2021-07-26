@@ -9,14 +9,16 @@ const db = new Dropbox({
 
 const connect = function (callback) {
     // Try listing root directory to confirm database connection
+    console.log("CONNECTING TO DROPBOX...")
     db.filesListFolder({ path: "" })
         .then(result => {
-            console.log("Dropbox connection succeeded")
+            console.log("OK!")
 
             callback(null, db)
         })
         .catch(err => {
-            console.error("Dropbox failure", result)
+            console.log("FAILURE!")
+            console.error(err)
 
             callback(err)
         })

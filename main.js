@@ -28,6 +28,8 @@ Dropbox.connect((err, db) => {
                 return; // Failsafe
             }
 
+            console.log("SETUP COMPLETE!\n")
+
             setupEndpoints(app, db)
         })
     })
