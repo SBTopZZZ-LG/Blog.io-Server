@@ -163,7 +163,7 @@ router.get("/blogs", async (req, res, next) => {
     try {
         const queries = req.query
         const uid = queries["uid"] || ""
-        const fields = queries["fields"]
+        const fields = queries["fields"] || ""
         const count = queries["count"] == undefined ? null : parseInt(queries["count"])
         const timestamp = queries["timestamp"]
         const ts_type = parseInt(queries["ts_type"] || -1)
@@ -202,6 +202,7 @@ router.get("/blogs", async (req, res, next) => {
             "result": allBlogs
         })
     } catch (e) {
+        console.error(e)
         return res.status(500).send(e)
     }
 })
@@ -626,6 +627,11 @@ router.get("/blog/react/comments", async (req, res, next) => {
     try {
         const queries = req.query
         const blogUid = queries["blogUid"]
+        const sortBy = queries["sortBy"]
+        const reversed = queries["rev"] == "true" ? "true" : "false"
+        const timestamp = queries["timestamp"]
+        const ts_type = parseInt(queries["ts_type"] || -1)
+        const count = queries["count"]
 
         const blog = await Blog.findOne({ _id: ObjectId(blogUid) })
 
@@ -634,9 +640,44 @@ router.get("/blog/react/comments", async (req, res, next) => {
                 "error": "404-uidNotFound"
             })
 
+        var sorted = sortBy ? blog["comments"].sort((a, b) => {
+            var ts1 = 0
+            var ts2 = 0
+
+            if (sortBy == "likes") {
+                ts1 = a["comment"]["reactions"]["like_count"]
+                ts2 = b["comment"]["reactions"]["like_count"]
+            } else if (sortBy == "dislikes") {
+                ts1 = a["comment"]["reactions"]["dislike_count"]
+                ts2 = b["comment"]["reactions"]["dislike_count"]
+            } else if (sortBy == "timestamp") {
+                ts1 = a["comment"]["timestamp"]
+                ts2 = b["comment"]["timestamp"]
+            }
+
+            const return_val = ts2 - ts1
+
+            return return_val || -1
+        }) : blog["comments"]
+
+        if (reversed == "true")
+            sorted.reverse()
+
+        if (timestamp)
+            sorted = sorted.filter(item => {
+                if (ts_type == 1)
+                    return item["comment"]["timestamp"] > timestamp
+                else
+                    return item["comment"]["timestamp"] < timestamp
+            })
+
+        if (count)
+            if (count > 0)
+                sorted.splice(count, sorted.length - count <= 0 ? sorted.length : sorted.length - count)
+
         return res.status(200).send({
             "error": null,
-            "result": blog["comments"]
+            "result": sorted
         })
     } catch (e) {
         return res.status(500).send(e)
